@@ -1,0 +1,11 @@
+@ChekersAPI_HostAddress = http://localhost:5138
+
+POST {{ChekersAPI_HostAddress}}/position
+Content-Type: application/json
+Accept: application/json
+
+{
+    "Color": "color",
+    "Position": "your_position_data"
+}
+
