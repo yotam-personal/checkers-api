@@ -6,7 +6,11 @@ builder.Services.AddCors(options =>
     options.AddPolicy("MyAllowSpecificOrigins",
                       builder =>
                       {
-                          builder.WithOrigins("http://localhost:4200")
+                          builder.WithOrigins(
+                              "http://localhost:4200",
+                              "https://checkers-198a5.web.app",
+                              "https://yotam.xyz"
+                              )
                                  .AllowAnyHeader()
                                  .AllowAnyMethod();
                       });
