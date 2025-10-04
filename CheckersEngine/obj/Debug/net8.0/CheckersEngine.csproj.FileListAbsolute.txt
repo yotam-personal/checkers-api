@@ -9,3 +9,15 @@ D:\ChekersAPI\CheckersEngine\obj\Debug\net8.0\CheckersEngine.dll
 D:\ChekersAPI\CheckersEngine\obj\Debug\net8.0\refint\CheckersEngine.dll
 D:\ChekersAPI\CheckersEngine\obj\Debug\net8.0\CheckersEngine.pdb
 D:\ChekersAPI\CheckersEngine\obj\Debug\net8.0\ref\CheckersEngine.dll
+D:\ChekersAPI\checkers-api\CheckersEngine\obj\Debug\net8.0\CheckersEngine.GeneratedMSBuildEditorConfig.editorconfig
+D:\ChekersAPI\checkers-api\CheckersEngine\obj\Debug\net8.0\CheckersEngine.AssemblyInfoInputs.cache
+D:\ChekersAPI\checkers-api\CheckersEngine\obj\Debug\net8.0\CheckersEngine.AssemblyInfo.cs
+D:\ChekersAPI\checkers-api\CheckersEngine\obj\Debug\net8.0\CheckersEngine.csproj.CoreCompileInputs.cache
+D:\ChekersAPI\checkers-api\CheckersEngine\obj\Debug\net8.0\CheckersEngine.sourcelink.json
+D:\ChekersAPI\checkers-api\CheckersEngine\obj\Debug\net8.0\CheckersEngine.dll
+D:\ChekersAPI\checkers-api\CheckersEngine\obj\Debug\net8.0\refint\CheckersEngine.dll
+D:\ChekersAPI\checkers-api\CheckersEngine\obj\Debug\net8.0\CheckersEngine.pdb
+D:\ChekersAPI\checkers-api\CheckersEngine\bin\Debug\net8.0\CheckersEngine.deps.json
+D:\ChekersAPI\checkers-api\CheckersEngine\bin\Debug\net8.0\CheckersEngine.dll
+D:\ChekersAPI\checkers-api\CheckersEngine\bin\Debug\net8.0\CheckersEngine.pdb
+D:\ChekersAPI\checkers-api\CheckersEngine\obj\Debug\net8.0\ref\CheckersEngine.dll

@@ -17,7 +17,7 @@ namespace CheckersEngine
         public uint[] BitBoards { get; set; }
         public TranspositionTable(int sizeMB)
         {
-            int ttEntrySizeBytes = System.Runtime.InteropServices.Marshal.SizeOf<TranspositionTable.Entry>();
+            int ttEntrySizeBytes = System.Runtime.CompilerServices.Unsafe.SizeOf<TranspositionTable.Entry>();
             int desiredTableSizeInBytes = sizeMB * 1024 * 1024;
             int numEntries = desiredTableSizeInBytes / ttEntrySizeBytes;
 

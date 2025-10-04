@@ -58,6 +58,6 @@ namespace CheckersEngine
         {
             string move = $"{StartSquare}-{TargetSquare}";
             return move;
-        }kkkk
+        }
     }
 }

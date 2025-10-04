@@ -10,10 +10,8 @@
         "dependencies": {
           "CheckersEngine": "1.0.0",
           "Google.Cloud.Firestore": "3.5.1",
-          "Microsoft.DotNet.ILCompiler": "8.0.0",
           "Microsoft.EntityFrameworkCore.SqlServer": "8.0.0",
           "Microsoft.EntityFrameworkCore.Tools": "8.0.0",
-          "Microsoft.NET.ILLink.Tasks": "8.0.0",
           "System.Data.SqlClient": "4.8.6"
         },
         "runtime": {
@@ -527,7 +525,6 @@
           }
         }
       },
-      "Microsoft.DotNet.ILCompiler/8.0.0": {},
       "Microsoft.EntityFrameworkCore/8.0.0": {
         "dependencies": {
           "Microsoft.EntityFrameworkCore.Abstractions": "8.0.0",
@@ -743,7 +740,6 @@
           }
         }
       },
-      "Microsoft.NET.ILLink.Tasks/8.0.0": {},
       "Microsoft.NETCore.Platforms/1.1.0": {},
       "Microsoft.NETCore.Targets/1.1.0": {},
       "Microsoft.SqlServer.Server/1.0.0": {
@@ -1336,13 +1332,6 @@
       "path": "microsoft.data.sqlclient.sni.runtime/5.1.0",
       "hashPath": "microsoft.data.sqlclient.sni.runtime.5.1.0.nupkg.sha512"
     },
-    "Microsoft.DotNet.ILCompiler/8.0.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-zuTbpcWDCCvESnOAvpHuwum1C3jJIeDl+grYcRDqyoHsPAUutIB6wb7iJV3Y2Q96crKC6cObqf92eOVEiG7keQ==",
-      "path": "microsoft.dotnet.ilcompiler/8.0.0",
-      "hashPath": "microsoft.dotnet.ilcompiler.8.0.0.nupkg.sha512"
-    },
     "Microsoft.EntityFrameworkCore/8.0.0": {
       "type": "package",
       "serviceable": true,
@@ -1517,13 +1506,6 @@
       "sha512": "sha512-ZPqHi86UYuqJXJ7bLnlEctHKkPKT4lGUFbotoCNiXNCSL02emYlcxzGYsRGWWmbFEcYDMi2dcTLLYNzHqWOTsw==",
       "path": "microsoft.identitymodel.tokens/6.24.0",
       "hashPath": "microsoft.identitymodel.tokens.6.24.0.nupkg.sha512"
-    },
-    "Microsoft.NET.ILLink.Tasks/8.0.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-B3etT5XQ2nlWkZGO2m/ytDYrOmSsQG1XNBaM6ZYlX5Ch/tDrMFadr0/mK6gjZwaQc55g+5+WZMw4Cz3m8VEF7g==",
-      "path": "microsoft.net.illink.tasks/8.0.0",
-      "hashPath": "microsoft.net.illink.tasks.8.0.0.nupkg.sha512"
     },
     "Microsoft.NETCore.Platforms/1.1.0": {
       "type": "package",

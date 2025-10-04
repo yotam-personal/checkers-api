@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("CheckersEngine")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+64e69c2054220f8b27e935583fb30076f0a86cf2")]
 [assembly: System.Reflection.AssemblyProductAttribute("CheckersEngine")]
 [assembly: System.Reflection.AssemblyTitleAttribute("CheckersEngine")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

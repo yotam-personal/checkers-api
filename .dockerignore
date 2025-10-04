@@ -1,2 +1,9 @@
-bin\
-obj\
+**/.git
+**/.vs
+**/.vscode
+**/bin
+**/obj
+**/*.user
+**/node_modules
+**/wwwroot/lib
+**/.DS_Store
