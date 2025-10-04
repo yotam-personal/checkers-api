@@ -15,14 +15,12 @@ namespace ChekersAPI.Controllers
         {
             this.logger = logger;
 
-            string projectId = configuration["Firebase:ProjectId"];
-
-            // Try to get credentials path from configuration
+            string projectId = configuration["Firebase:ProjectId"] ?? "checkers-198a5";
             string? credentialsPath = configuration["Firebase:CredentialPath"];
 
+            // Only use file-based credentials if path is provided AND file exists
             if (!string.IsNullOrEmpty(credentialsPath))
             {
-                // Use file-based credentials
                 string fullPath = Path.IsPathRooted(credentialsPath)
                     ? credentialsPath
                     : Path.Combine(AppContext.BaseDirectory, credentialsPath);
@@ -30,21 +28,20 @@ namespace ChekersAPI.Controllers
                 if (System.IO.File.Exists(fullPath))
                 {
                     Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", fullPath);
-                    this.db = FirestoreDb.Create(projectId);
                     logger.LogInformation("Firebase initialized with credentials from: {Path}", fullPath);
                 }
                 else
                 {
-                    logger.LogError("Credential file not found at: {Path}", fullPath);
-                    throw new FileNotFoundException($"Firebase credential file not found at: {fullPath}");
+                    logger.LogWarning("Credential file not found at: {Path}. Using default credentials.", fullPath);
                 }
             }
             else
             {
-                // Use default credentials (works in GCP environments like Cloud Run, GKE, etc.)
                 logger.LogInformation("Using default application credentials for Firebase");
-                this.db = FirestoreDb.Create(projectId);
             }
+
+            // Always create FirestoreDb - will use env var if set, otherwise default credentials
+            this.db = FirestoreDb.Create(projectId);
         }
 
         [HttpPost("addwinner")]
@@ -66,14 +63,12 @@ namespace ChekersAPI.Controllers
                 string[] gameSequence = winningGameObject.GetGameSequence();
                 CollectionReference winnersCollection = db.Collection("winners");
 
-                // Get the top 5 winners (ordered by timestamp)
                 Query topWinnersQuery = winnersCollection
                     .OrderBy("timestamp")
                     .LimitToLast(5);
 
                 QuerySnapshot winnersSnapshot = await topWinnersQuery.GetSnapshotAsync();
 
-                // Remove oldest winner if we already have 5
                 if (winnersSnapshot.Documents.Count >= 5)
                 {
                     DocumentReference oldestWinnerRef = winnersSnapshot.Documents[0].Reference;
@@ -81,7 +76,6 @@ namespace ChekersAPI.Controllers
                     logger.LogInformation("Removed oldest winner to make room for new winner");
                 }
 
-                // Add the new winner
                 await winnersCollection.AddAsync(new
                 {
                     name = i_Submission.Winner.Name,
@@ -90,12 +84,12 @@ namespace ChekersAPI.Controllers
                 });
 
                 logger.LogInformation("Added new winner: {Name}", i_Submission.Winner.Name);
-                return Ok(new { message = "Winner added successfully" });
+                return Ok("Winner added successfully");
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Error adding winner");
-                return StatusCode(500, new { error = "An error occurred while adding the winner" });
+                return StatusCode(500, "An error occurred while adding the winner");
             }
         }
 
@@ -112,7 +106,7 @@ namespace ChekersAPI.Controllers
 
                 if (winnersSnapshot.Documents.Count == 0)
                 {
-                    return Ok(new List<WinnerResponse>()); // Return empty list instead of 404
+                    return Ok(new List<WinnerResponse>());
                 }
 
                 List<WinnerResponse> winners = winnersSnapshot.Documents
@@ -129,7 +123,7 @@ namespace ChekersAPI.Controllers
             catch (Exception ex)
             {
                 logger.LogError(ex, "Error retrieving winners");
-                return StatusCode(500, new { error = "An error occurred while retrieving winners" });
+                return StatusCode(500, "An error occurred while retrieving winners");
             }
         }
     }
