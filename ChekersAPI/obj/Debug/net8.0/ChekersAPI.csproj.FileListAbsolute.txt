@@ -317,3 +317,5 @@ D:\ChekersAPI\checkers-api\ChekersAPI\obj\Debug\net8.0\scopedcss\bundle\ChekersA
 D:\ChekersAPI\checkers-api\ChekersAPI\obj\Debug\net8.0\ChekersAPI.csproj.CopyComplete
 D:\ChekersAPI\checkers-api\ChekersAPI\obj\Debug\net8.0\ChekersAPI.genruntimeconfig.cache
 D:\ChekersAPI\checkers-api\ChekersAPI\obj\Debug\net8.0\ref\ChekersAPI.dll
+D:\ChekersAPI\checkers-api\ChekersAPI\bin\Debug\net8.0\appsettings.production.Development.json
+D:\ChekersAPI\checkers-api\ChekersAPI\bin\Debug\net8.0\appsettings.Production.json

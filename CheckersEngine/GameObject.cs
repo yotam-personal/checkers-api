@@ -29,7 +29,7 @@ namespace CheckersEngine
             this.moveList = new List<ComputerMove>();
             this.moveGenerator = new MoveGenerator();
             this.legalMoves = this.moveGenerator.GiveLegalMoves(this.BoardState, this.Turn);
-            this.TranspositionTable = new TranspositionTable(64);
+            this.TranspositionTable = new TranspositionTable(2);
         }
 
         public void swapTurn()

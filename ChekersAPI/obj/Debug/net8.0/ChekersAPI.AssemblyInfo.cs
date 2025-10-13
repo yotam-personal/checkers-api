@@ -15,7 +15,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ChekersAPI")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+3220cae6f0b2f074bb5183d02bf163a3d110ee6c")]
 [assembly: System.Reflection.AssemblyProductAttribute("ChekersAPI")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ChekersAPI")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
