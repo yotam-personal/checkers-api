@@ -57,6 +57,12 @@ namespace ChekersAPI
 
     public record Winner
     {
+        // Bounded on the server, not just in the form. The front end offers 15 characters;
+        // nothing stopped a crafted request from putting an 18 MB name on a five-row board,
+        // which every visitor then downloaded until five more people won. Firestore had an
+        // implicit bound (a document could not exceed ~1 MiB); a bare TEXT column has none.
+        [Required(ErrorMessage = "Name is required")]
+        [StringLength(64, MinimumLength = 1, ErrorMessage = "Name must be between 1 and 64 characters")]
         public required string Name { get; set; }
     }
 

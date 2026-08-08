@@ -53,21 +53,30 @@ namespace ChekersAPI.Controllers
         // deploy, but a game does not need Postgres to be played — so an unreachable
         // database costs a tick on a dashboard and nothing else. The alternative, letting
         // this throw, would make the leaderboard's availability the game's availability.
+        //
+        // Deliberately NOT gated on Db.Ready. That gate skipped the increment for up to the
+        // full probe interval after any single failure, so one malformed request from any
+        // client silently un-counted every game started in the next thirty seconds. The
+        // try/catch below is the only guard needed, and attempting the write is also what
+        // discovers that the database is back.
         private async Task recordGameStarted()
         {
-            if (!Db.Ready)
+            for (int attempt = 1; attempt <= 2; attempt++)
             {
-                return;
-            }
-
-            try
-            {
-                long total = await Db.IncrementCounterAsync(Db.GamesStartedCounter);
-                GameMetrics.GamesAllTime.Set(total);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "could not record the game in the lifetime counter");
+                try
+                {
+                    long total = await Db.IncrementCounterAsync(Db.GamesStartedCounter);
+                    GameMetrics.GamesAllTime.Set(total);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    if (attempt == 2)
+                    {
+                        GameMetrics.GamesUncounted.Inc();
+                        _logger.LogWarning(ex, "could not record the game in the lifetime counter");
+                    }
+                }
             }
         }
 

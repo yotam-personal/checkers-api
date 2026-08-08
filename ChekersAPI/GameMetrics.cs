@@ -27,11 +27,23 @@ namespace ChekersAPI
         public static readonly Counter WinsRecorded = Metrics.CreateCounter(
             "checkers_wins_total", "Human wins accepted onto the leaderboard since this process began.");
 
+        // SuppressInitialValue: this gauge is not exported until it has actually been read
+        // from the database. Registered eagerly it defaults to 0, so a pod that starts while
+        // Postgres is down published a lifetime total of zero — the worst possible reading
+        // for a number whose entire purpose is to survive restarts.
         public static readonly Gauge GamesAllTime = Metrics.CreateGauge(
             "checkers_games_all_time",
-            "Games started since this service moved to Orbit. Durable across restarts; not backfilled from Firebase.");
+            "Games started since this service moved to Orbit. Durable across restarts; not backfilled from Firebase.",
+            new GaugeConfiguration { SuppressInitialValue = true });
 
         public static readonly Gauge DatabaseUp = Metrics.CreateGauge(
             "checkers_database_up", "1 when the leaderboard database is reachable, 0 when it is not.");
+
+        // Games that were played but could not be added to the lifetime total. Without this
+        // the loss is invisible: the durable counter simply advances more slowly than the
+        // process counter, and nothing anywhere says so.
+        public static readonly Counter GamesUncounted = Metrics.CreateCounter(
+            "checkers_games_uncounted_total",
+            "Games started that could not be written to the durable lifetime counter.");
     }
 }

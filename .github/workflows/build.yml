@@ -16,5 +16,9 @@ jobs:
     uses: YotamPeled/yotam-platform/.github/workflows/build-service.yml@main
     with:
       image: yotampeled/checkers-api
+      # Builds the image and runs the leaderboard fidelity suite against a real Postgres
+      # before anything is pushed. Every case in it is a defect an adversarial review found
+      # in the move off Firestore, kept as a test rather than as a changelog.
+      test: "docker build -t checkers-api:local . && test/fidelity.sh"
     secrets:
       ORBIT_DISPATCH_TOKEN: ${{ secrets.ORBIT_DISPATCH_TOKEN }}

@@ -41,7 +41,12 @@ namespace ChekersAPI
                 {
                     GameMetrics.DatabaseUp.Set(0);
                     _logger.LogWarning(ex, "leaderboard database unavailable; games are unaffected, retrying");
-                    delay = TimeSpan.FromSeconds(Math.Min(30, delay.TotalSeconds * 2));
+                    // Back off from two seconds again rather than from the thirty-second
+                    // steady-state interval. Left at thirty, recovery from a brief outage
+                    // took the full probe period, and everything gated on readiness stayed
+                    // degraded for that whole window over a database that was already back.
+                    delay = TimeSpan.FromSeconds(Math.Min(30, Math.Max(2, delay.TotalSeconds) * 2));
+                    if (delay > TimeSpan.FromSeconds(8)) { delay = TimeSpan.FromSeconds(8); }
                 }
 
                 try { await Task.Delay(delay, stoppingToken); }

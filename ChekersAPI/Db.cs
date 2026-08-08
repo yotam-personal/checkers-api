@@ -15,9 +15,20 @@ namespace ChekersAPI
     {
         public const string GamesStartedCounter = "games_started";
 
+        /// <summary>How many winners the board keeps. Application behaviour, carried over
+        /// from the Firestore version, where it was also application behaviour.</summary>
+        private const int LeaderboardSize = 5;
+
+        /// <summary>Longest accepted winner name. The front end offers 15; this is the
+        /// server's own bound, and it exists because Firestore had one (a document could
+        /// not exceed ~1 MiB) and a bare TEXT column does not. Without it a single crafted
+        /// request parks a multi-megabyte row on a five-row board and every visitor
+        /// downloads it until five more people win.</summary>
+        public const int MaxNameLength = 64;
+
         private static NpgsqlDataSource? s_dataSource;
 
-        /// <summary>True once a connection has been established and the schema applied.</summary>
+        /// <summary>True once a connection has been established and the schema verified.</summary>
         public static bool Ready { get; private set; }
 
         public static string BuildConnectionString()
@@ -32,10 +43,10 @@ namespace ChekersAPI
                 Username = Env("PGUSER", "checkers"),
                 Password = Env("PGPASSWORD", ""),
                 Database = Env("PGDATABASE", "checkers"),
-                // The API and the database are two pods in one namespace on one node.
-                // TLS between them buys nothing that the NetworkPolicy does not already
-                // provide, and CNPG's server certificate is signed by its own CA, so
-                // requiring verification here would mean shipping that CA into this image.
+                // The API and the database are two pods in one namespace on one node. TLS
+                // between them buys nothing the NetworkPolicy does not already provide, and
+                // CNPG's server certificate is signed by its own CA, so requiring
+                // verification would mean shipping that CA into this image.
                 SslMode = SslMode.Prefer,
                 // A move request that blocks on the database is worse than one that fails:
                 // the engine does not need the database at all, so a hung leaderboard must
@@ -48,11 +59,11 @@ namespace ChekersAPI
         }
 
         /// <summary>
-        /// Opens the pool and applies the schema. Idempotent, and safe to call again after
-        /// a failure — the caller retries in the background rather than refusing to start,
-        /// because the checkers engine is fully playable with no database at all and
-        /// crash-looping on a database that is still bootstrapping would take the game
-        /// down with it.
+        /// Opens the pool, applies the schema, and verifies it is the schema this code
+        /// expects. Idempotent, and safe to call again after a failure — the caller retries
+        /// in the background rather than refusing to start, because the checkers engine is
+        /// fully playable with no database at all and crash-looping against a Postgres that
+        /// is still bootstrapping would take the game down with it.
         /// </summary>
         public static async Task InitializeAsync(ILogger logger, CancellationToken ct = default)
         {
@@ -61,21 +72,40 @@ namespace ChekersAPI
             await using var conn = await s_dataSource.OpenConnectionAsync(ct);
             await using (var cmd = conn.CreateCommand())
             {
-                cmd.CommandText = @"
+                cmd.CommandText = $@"
 CREATE TABLE IF NOT EXISTS winners (
     id            BIGSERIAL PRIMARY KEY,
     name          TEXT        NOT NULL,
     game_sequence TEXT[]      NOT NULL,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
 );
--- The leaderboard is read as 'the five most recent', so that ordering is the only index
--- that earns its keep.
-CREATE INDEX IF NOT EXISTS winners_created_at_desc ON winners (created_at DESC, id DESC);
 
--- Counters that must survive a restart. A Prometheus counter cannot answer 'how many
--- games have ever been played' — it resets with the process, and Prometheus is explicitly
--- designed to treat that as a reset rather than a loss. Anything presented as a lifetime
--- total has to live here.
+-- clock_timestamp(), not now(). now() is transaction_timestamp() — the moment the
+-- transaction STARTED, before any of its work happened. A submission whose transaction ran
+-- slower than its neighbours was therefore stamped as older than submissions that started
+-- after it, which put it below them on a board it had just been accepted onto. Nothing
+-- orders by this column any more either (see below), but a displayed timestamp that
+-- predates the row's own work is still a lie.
+ALTER TABLE winners ALTER COLUMN created_at SET DEFAULT clock_timestamp();
+
+-- Bound the name in the database as well as in the model. The model binding is what returns
+-- a clean 400; this is what makes an oversized row unrepresentable regardless of how it
+-- arrives.
+ALTER TABLE winners DROP CONSTRAINT IF EXISTS winners_name_length;
+ALTER TABLE winners ADD CONSTRAINT winners_name_length CHECK (length(name) BETWEEN 1 AND {MaxNameLength});
+
+-- GetPositionSequence indexes element 0 unguarded. An empty array is not producible by the
+-- engine, but the column allowed one, and a single unreadable row failed the whole
+-- leaderboard for everybody. COALESCE is load-bearing: array_length('{{}}', 1) is NULL, not
+-- 0, and a CHECK that evaluates to NULL PASSES — so the constraint without it accepted
+-- exactly the value it was written to reject.
+ALTER TABLE winners DROP CONSTRAINT IF EXISTS winners_sequence_nonempty;
+ALTER TABLE winners ADD CONSTRAINT winners_sequence_nonempty CHECK (COALESCE(array_length(game_sequence, 1), 0) >= 1);
+
+-- Counters that must survive a restart. A Prometheus counter cannot answer 'how many games
+-- have ever been played' — it resets with the process, and Prometheus is explicitly designed
+-- to treat that as a reset rather than a loss. Anything presented as a lifetime total has to
+-- live here.
 CREATE TABLE IF NOT EXISTS counters (
     name  TEXT PRIMARY KEY,
     value BIGINT NOT NULL DEFAULT 0
@@ -84,31 +114,91 @@ CREATE TABLE IF NOT EXISTS counters (
                 await cmd.ExecuteNonQueryAsync(ct);
             }
 
+            await VerifySchemaAsync(conn, ct);
+
             Ready = true;
-            logger.LogInformation("database ready at {Host}", new NpgsqlConnectionStringBuilder(BuildConnectionString()).Host);
+            logger.LogInformation("database ready at {Host}",
+                new NpgsqlConnectionStringBuilder(BuildConnectionString()).Host);
+        }
+
+        /// <summary>
+        /// CREATE TABLE IF NOT EXISTS is not a migration. Against a pre-existing `winners`
+        /// of a different shape it succeeds silently, and the service then reports itself
+        /// healthy while every write fails and the leaderboard reads as legitimately empty —
+        /// a 200 with wrong data, which is the worst answer available. Confirm the columns
+        /// are the ones this code writes before claiming to be ready.
+        /// </summary>
+        private static async Task VerifySchemaAsync(NpgsqlConnection conn, CancellationToken ct)
+        {
+            var expected = new Dictionary<string, (string Table, string Type)>
+            {
+                ["winners.id"] = ("winners", "bigint"),
+                ["winners.name"] = ("winners", "text"),
+                ["winners.game_sequence"] = ("winners", "ARRAY"),
+                ["winners.created_at"] = ("winners", "timestamp with time zone"),
+                ["counters.name"] = ("counters", "text"),
+                ["counters.value"] = ("counters", "bigint"),
+            };
+
+            var found = new Dictionary<string, string>();
+            await using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT table_name, column_name, data_type
+  FROM information_schema.columns
+ WHERE table_schema = current_schema() AND table_name IN ('winners','counters')";
+                await using var reader = await cmd.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                {
+                    found[$"{reader.GetString(0)}.{reader.GetString(1)}"] = reader.GetString(2);
+                }
+            }
+
+            var wrong = expected
+                .Where(e => !found.TryGetValue(e.Key, out string? t) || t != e.Value.Type)
+                .Select(e => $"{e.Key} expected {e.Value.Type}, found {(found.TryGetValue(e.Key, out string? t) ? t : "nothing")}")
+                .ToList();
+
+            if (wrong.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    "the database schema is not the one this build expects: " + string.Join("; ", wrong));
+            }
         }
 
         private static NpgsqlDataSource Source =>
             s_dataSource ?? throw new InvalidOperationException("database not initialised");
 
         /// <summary>
-        /// Runs a query and, if it fails, records that the database is down before letting
-        /// the exception through.
+        /// True for failures that mean the database is unreachable, as opposed to failures
+        /// that mean the request was bad.
         ///
-        /// The background probe alone is not enough. It runs every thirty seconds, so an
-        /// outage shorter than that is invisible to it: checkers_database_up read 1 for the
-        /// entire duration of a real outage during which getwinners was returning 500. A
-        /// health gauge that misses outages is worse than no gauge, because it is the thing
-        /// a dashboard is trusted to show. Clearing Ready also makes the probe re-run its
-        /// bootstrap on the next tick rather than assuming the pool is still good.
+        /// Conflating the two was exploitable: one submission with a NUL byte in the name
+        /// raised a PostgresException 22021, which marked the database down and made
+        /// SessionController stop recording games entirely until the next background probe.
+        /// Repeating that request every twenty-five seconds suppressed the durable counter
+        /// indefinitely while Postgres was perfectly healthy — and checkers_database_up, the
+        /// one gauge a dashboard is meant to trust, read 0 throughout.
         /// </summary>
+        private static bool IsOutage(Exception ex) => ex switch
+        {
+            // 08 connection, 53 insufficient resources, 57 operator intervention,
+            // 58 system error. Everything else — 22 data, 23 integrity — is the caller's.
+            PostgresException pg => pg.SqlState.StartsWith("08") || pg.SqlState.StartsWith("53")
+                                 || pg.SqlState.StartsWith("57") || pg.SqlState.StartsWith("58"),
+            NpgsqlException => true,          // socket, pool exhaustion, handshake
+            TimeoutException => true,
+            InvalidOperationException => true, // pool never opened, or schema mismatch
+            _ => false,
+        };
+
         private static async Task<T> Guarded<T>(Func<Task<T>> query)
         {
             try
             {
                 return await query();
             }
-            catch
+            catch (Exception ex) when (IsOutage(ex))
             {
                 Ready = false;
                 GameMetrics.DatabaseUp.Set(0);
@@ -117,15 +207,21 @@ CREATE TABLE IF NOT EXISTS counters (
         }
 
         /// <summary>
-        /// Adds a winner and trims the board back to the five most recent.
+        /// Adds a winner and trims the board back to the newest five.
         ///
-        /// The cap is application behaviour carried over deliberately from the Firestore
-        /// version, where it was implemented as 'delete the oldest before inserting'. It is
-        /// a trim after the insert here instead: the old form only removed one row per
-        /// insert, so a board that ever got ahead of the cap stayed ahead of it forever,
-        /// and two concurrent submissions could each delete one row and insert one, ending
-        /// up at six. Doing it in one transaction as 'keep the newest five' converges from
-        /// any starting state and is what the front end has always been shown.
+        /// The advisory lock is the correctness of this method, not a precaution. Without it,
+        /// under READ COMMITTED, two concurrent transactions cannot see each other's insert,
+        /// so both compute the same "newest five", both delete the same single oldest row,
+        /// and both survive: two simultaneous wins left SIX rows on a five-row board, in 25
+        /// trials out of 25, and sustained concurrency held a steady state of fourteen. The
+        /// previous comment here claimed this rewrite fixed exactly that. It did not — it
+        /// reproduced it.
+        ///
+        /// Ordering is by id, never by a timestamp. With the lock held, insert order is
+        /// commit order is id order. Ordering by created_at additionally let a submission
+        /// trim ITSELF away and still return "added successfully", because the default was
+        /// transaction-start time and a slower transaction ranked older than ones that began
+        /// after it.
         /// </summary>
         public static Task AddWinnerAsync(string name, string[] gameSequence, CancellationToken ct = default) =>
             Guarded(async () => { await addWinnerAsync(name, gameSequence, ct); return true; });
@@ -134,6 +230,14 @@ CREATE TABLE IF NOT EXISTS counters (
         {
             await using var conn = await Source.OpenConnectionAsync(ct);
             await using var tx = await conn.BeginTransactionAsync(ct);
+
+            await using (var mutex = conn.CreateCommand())
+            {
+                // Transaction-scoped: released by commit or rollback, so a crash between the
+                // insert and the trim cannot leave the board locked.
+                mutex.CommandText = "SELECT pg_advisory_xact_lock(hashtext('winners_trim'))";
+                await mutex.ExecuteNonQueryAsync(ct);
+            }
 
             await using (var insert = conn.CreateCommand())
             {
@@ -145,9 +249,8 @@ CREATE TABLE IF NOT EXISTS counters (
 
             await using (var trim = conn.CreateCommand())
             {
-                trim.CommandText = @"
-DELETE FROM winners
- WHERE id NOT IN (SELECT id FROM winners ORDER BY created_at DESC, id DESC LIMIT 5)";
+                trim.CommandText =
+                    $"DELETE FROM winners WHERE id NOT IN (SELECT id FROM winners ORDER BY id DESC LIMIT {LeaderboardSize})";
                 await trim.ExecuteNonQueryAsync(ct);
             }
 
@@ -162,7 +265,7 @@ DELETE FROM winners
             var result = new List<(string, string[])>();
             await using var conn = await Source.OpenConnectionAsync(ct);
             await using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT name, game_sequence FROM winners ORDER BY created_at DESC, id DESC LIMIT 5";
+            cmd.CommandText = $"SELECT name, game_sequence FROM winners ORDER BY id DESC LIMIT {LeaderboardSize}";
             await using var reader = await cmd.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
             {
