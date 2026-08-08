@@ -6,6 +6,10 @@ name: build
 on:
   push:
     branches: [main]
+  # Re-runnable by hand. A run that fails before any job starts — which is what a
+  # freshly-created repository secret looks like for the first few minutes — cannot be
+  # retried through the API, so without this the only way to retry is another commit.
+  workflow_dispatch:
 
 jobs:
   build:
