@@ -45,5 +45,18 @@ namespace ChekersAPI
         public static readonly Counter GamesUncounted = Metrics.CreateCounter(
             "checkers_games_uncounted_total",
             "Games started that could not be written to the durable lifetime counter.");
+
+        // A labelled counter publishes a series per label value ON FIRST USE, so a pod
+        // nobody has played against exports no checkers_moves_total at all — and a
+        // dashboard query over it returns empty, which is indistinguishable from the
+        // metric having been renamed. Pre-registering the closed set of label values
+        // makes every series exist at 0 from boot. (The all-time gauge above is the
+        // deliberate opposite: its suppression is what stops a database outage from
+        // publishing a lifetime total of zero.)
+        static GameMetrics()
+        {
+            MovesRequested.WithLabels("ok").Publish();
+            MovesRequested.WithLabels("rejected").Publish();
+        }
     }
 }
