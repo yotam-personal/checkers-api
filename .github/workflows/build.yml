@@ -6,14 +6,21 @@ name: build
 on:
   push:
     branches: [main]
-  # Re-runnable by hand. A run that fails before any job starts — which is what a
-  # freshly-created repository secret looks like for the first few minutes — cannot be
-  # retried through the API, so without this the only way to retry is another commit.
+  # Re-runnable by hand: a run that fails before any job starts cannot be retried via the API.
   workflow_dispatch:
+
+# Required, and the cause of a long outage in this pipeline. The called workflow needs
+# packages: write to push to GHCR, and a called workflow can only NARROW the caller's token,
+# never widen it. This account defaults the workflow token to read-only, so without this
+# block GitHub refused the run before creating a single job — no log, no annotation, just
+# "startup_failure".
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   build:
-    uses: YotamPeled/yotam-platform/.github/workflows/build-service.yml@main
+    uses: YotamPeled/workflows/.github/workflows/build-service.yml@main
     with:
       image: yotampeled/checkers-api
       # Builds the image and runs the leaderboard fidelity suite against a real Postgres
