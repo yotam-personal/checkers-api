@@ -1,6 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Google.Cloud.Firestore;
-using Google.Cloud.Firestore.V1;
+using Microsoft.AspNetCore.Mvc;
 using CheckersEngine;
 
 namespace ChekersAPI.Controllers
@@ -8,40 +6,11 @@ namespace ChekersAPI.Controllers
     [ApiController]
     public class WinnersController : ControllerBase
     {
-        private readonly FirestoreDb db;
         private readonly ILogger<WinnersController> logger;
 
-        public WinnersController(IConfiguration configuration, ILogger<WinnersController> logger)
+        public WinnersController(ILogger<WinnersController> logger)
         {
             this.logger = logger;
-
-            string projectId = configuration["Firebase:ProjectId"] ?? "checkers-198a5";
-            string? credentialsPath = configuration["Firebase:CredentialPath"];
-
-            // Only use file-based credentials if path is provided AND file exists
-            if (!string.IsNullOrEmpty(credentialsPath))
-            {
-                string fullPath = Path.IsPathRooted(credentialsPath)
-                    ? credentialsPath
-                    : Path.Combine(AppContext.BaseDirectory, credentialsPath);
-
-                if (System.IO.File.Exists(fullPath))
-                {
-                    Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", fullPath);
-                    logger.LogInformation("Firebase initialized with credentials from: {Path}", fullPath);
-                }
-                else
-                {
-                    logger.LogWarning("Credential file not found at: {Path}. Using default credentials.", fullPath);
-                }
-            }
-            else
-            {
-                logger.LogInformation("Using default application credentials for Firebase");
-            }
-
-            // Always create FirestoreDb - will use env var if set, otherwise default credentials
-            this.db = FirestoreDb.Create(projectId);
         }
 
         [HttpPost("addwinner")]
@@ -54,6 +23,10 @@ namespace ChekersAPI.Controllers
                     return BadRequest("Invalid json format");
                 }
 
+                // Unchanged and load-bearing: the client sends the winning position and the
+                // server replays it against the live game before believing it. Without this,
+                // "add me to the leaderboard" would be a request anyone could make about a
+                // game they never played.
                 GameObject winningGameObject = ValidationUtils.ValidateAndParseRequest(i_Submission.MoveRequest);
                 if (!ValidationUtils.IsComputerLoss(winningGameObject))
                 {
@@ -61,27 +34,8 @@ namespace ChekersAPI.Controllers
                 }
 
                 string[] gameSequence = winningGameObject.GetGameSequence();
-                CollectionReference winnersCollection = db.Collection("winners");
-
-                Query topWinnersQuery = winnersCollection
-                    .OrderBy("timestamp")
-                    .LimitToLast(5);
-
-                QuerySnapshot winnersSnapshot = await topWinnersQuery.GetSnapshotAsync();
-
-                if (winnersSnapshot.Documents.Count >= 5)
-                {
-                    DocumentReference oldestWinnerRef = winnersSnapshot.Documents[0].Reference;
-                    await oldestWinnerRef.DeleteAsync();
-                    logger.LogInformation("Removed oldest winner to make room for new winner");
-                }
-
-                await winnersCollection.AddAsync(new
-                {
-                    name = i_Submission.Winner.Name,
-                    timestamp = Timestamp.GetCurrentTimestamp(),
-                    gameSequence = gameSequence
-                });
+                await Db.AddWinnerAsync(i_Submission.Winner.Name, gameSequence);
+                GameMetrics.WinsRecorded.Inc();
 
                 logger.LogInformation("Added new winner: {Name}", i_Submission.Winner.Name);
                 return Ok("Winner added successfully");
@@ -98,23 +52,22 @@ namespace ChekersAPI.Controllers
         {
             try
             {
-                Query winnersQuery = db.Collection("winners")
-                    .OrderByDescending("timestamp")
-                    .Limit(5);
-
-                QuerySnapshot winnersSnapshot = await winnersQuery.GetSnapshotAsync();
-
-                if (winnersSnapshot.Documents.Count == 0)
+                var rows = await Db.GetWinnersAsync();
+                if (rows.Count == 0)
                 {
                     return Ok(new List<WinnerResponse>());
                 }
 
-                List<WinnerResponse> winners = winnersSnapshot.Documents
-                    .Select(winnerDoc => new WinnerResponse
+                // The stored sequence is [opening position, then one entry per move]. The
+                // front end wants the moves without that first element, and the positions
+                // derived by replaying them — exactly as the Firestore version returned it,
+                // so the same front end reads either backend without noticing.
+                List<WinnerResponse> winners = rows
+                    .Select(row => new WinnerResponse
                     {
-                        Name = winnerDoc.GetValue<string>("name"),
-                        MoveSequence = winnerDoc.GetValue<string[]>("gameSequence").Skip(1).ToArray(),
-                        PositionSequence = ParsingUtils.GetPositionSequence(winnerDoc.GetValue<string[]>("gameSequence"))
+                        Name = row.Name,
+                        MoveSequence = row.GameSequence.Skip(1).ToArray(),
+                        PositionSequence = ParsingUtils.GetPositionSequence(row.GameSequence)
                     })
                     .ToList();
 

@@ -1,0 +1,7 @@
+# Build output. These were tracked, which is how a second copy of the Firebase service
+# account key ended up in the repository at bin/Debug/net8.0/Properties/key.json — one
+# nobody would think to look for while deleting the obvious one.
+bin/
+obj/
+.vs/
+*.user

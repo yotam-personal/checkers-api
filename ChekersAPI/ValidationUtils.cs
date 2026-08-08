@@ -1,6 +1,4 @@
-﻿using Azure.Core;
-using CheckersEngine;
-using Microsoft.Identity.Client;
+﻿using CheckersEngine;
 
 namespace ChekersAPI
 {

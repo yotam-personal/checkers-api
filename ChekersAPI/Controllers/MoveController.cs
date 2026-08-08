@@ -23,11 +23,16 @@ namespace ChekersAPI.Controllers
             {
                 MoveResponseAgent agent = MoveResponseAgent.GetInstance(moveRequest);
                 CheckersMoveReply computerMove = await agent.GenerateMoveResponse();
-                Console.WriteLine(computerMove);
+                GameMetrics.MovesRequested.WithLabels("ok").Inc();
+
                 return Ok(computerMove);
             }
             catch (Exception ex)
             {
+                // Labelled rather than counted separately: a rise in rejected moves is how
+                // a broken front end or an expired game shows up, and it is only legible
+                // next to the successful ones.
+                GameMetrics.MovesRequested.WithLabels("rejected").Inc();
                 return BadRequest("Error: " + ex.Message);
             }
         }

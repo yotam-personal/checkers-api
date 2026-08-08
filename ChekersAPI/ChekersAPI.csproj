@@ -8,21 +8,23 @@
 		<UserSecretsId>6fde7f23-42fd-4033-9064-8207ed814f88</UserSecretsId>
 	</PropertyGroup>
 	<ItemGroup>
-		<PackageReference Include="Google.Cloud.Firestore" Version="3.5.1" />
-		<PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.0" />
-		<PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.0">
-			<PrivateAssets>all</PrivateAssets>
-			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-		</PackageReference>
-		<PackageReference Include="System.Data.SqlClient" Version="4.8.6" />
+		<!--
+		  Postgres, reached directly with Npgsql. There is no ORM: the whole persistent
+		  model is a five-row leaderboard and a counter, and Entity Framework would be a
+		  migration story, a model story and a startup cost for two tables.
+
+		  The Firestore client and the SQL Server packages that used to be here are gone.
+		  The SQL Server ones were never referenced by a line of code — they only ever
+		  supplied the transitive Azure.Core and Microsoft.Identity.Client that two files
+		  had `using` lines for and never used.
+		-->
+		<PackageReference Include="Npgsql" Version="9.0.5" />
+		<PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
 	</ItemGroup>
 	<ItemGroup>
 		<ProjectReference Include="..\CheckersEngine\CheckersEngine.csproj" />
 	</ItemGroup>
 	<ItemGroup>
-		<None Update="Properties\key.json">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</None>
 		<None Update="appsettings.json">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>

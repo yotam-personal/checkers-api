@@ -1,5 +1,4 @@
-﻿using Microsoft.IdentityModel.Tokens;
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 
 namespace ChekersAPI
 {
@@ -25,7 +24,7 @@ namespace ChekersAPI
             string moves = i_DBMove.Split('|')[0].Split(':')[1];
             foreach(string _move in moves.Split(' '))
             {
-                if (!_move.IsNullOrEmpty())
+                if (!string.IsNullOrEmpty(_move))
                 {
                     yield return _move;
                 }

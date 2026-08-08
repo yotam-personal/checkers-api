@@ -1,0 +1,16 @@
+# This repository holds no CI logic. It says what to build and hands off to the platform's
+# one build pipeline, so caching, scanning or a change of registry is a commit there rather
+# than a change here and in every other project.
+name: build
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    uses: YotamPeled/yotam-platform/.github/workflows/build-service.yml@main
+    with:
+      image: yotampeled/checkers-api
+    secrets:
+      ORBIT_DISPATCH_TOKEN: ${{ secrets.ORBIT_DISPATCH_TOKEN }}
