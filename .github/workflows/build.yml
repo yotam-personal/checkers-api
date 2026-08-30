@@ -28,5 +28,3 @@ jobs:
       # before anything is pushed. Every case in it is a defect an adversarial review found
       # in the move off Firestore, kept as a test rather than as a changelog.
       test: "docker build -t checkers-api:local . && test/fidelity.sh"
-    secrets:
-      ORBIT_DISPATCH_TOKEN: ${{ secrets.ORBIT_DISPATCH_TOKEN }}
