@@ -20,9 +20,9 @@ permissions:
 
 jobs:
   build:
-    uses: YotamPeled/workflows/.github/workflows/build-service.yml@main
+    uses: yotam-personal/workflows/.github/workflows/build-service.yml@main
     with:
-      image: yotampeled/checkers-api
+      image: yotam-personal/checkers-api
       # Builds the image and runs the leaderboard fidelity suite against a real Postgres
       # before anything is pushed. Every case in it is a defect an adversarial review found
       # in the move off Firestore, kept as a test rather than as a changelog.
