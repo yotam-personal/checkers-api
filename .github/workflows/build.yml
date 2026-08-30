@@ -11,7 +11,8 @@ on:
 
 # Required, and the cause of a long outage in this pipeline. The called workflow needs
 # packages: write to push to GHCR, and a called workflow can only NARROW the caller's token,
-# never widen it. This account defaults the workflow token to read-only, so without this
+# never widen it. The owning account — the yotam-personal org since the migration, a
+# personal account before it — defaults the workflow token to read-only, so without this
 # block GitHub refused the run before creating a single job — no log, no annotation, just
 # "startup_failure".
 permissions:
