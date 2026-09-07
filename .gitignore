@@ -5,3 +5,6 @@ bin/
 obj/
 .vs/
 *.user
+
+# The cx22 compose .env holds the generated Postgres password.
+deploy/cx22/.env

@@ -1,0 +1,101 @@
+# checkers on the cx22 (openclaw, 178.104.144.231) — raw Docker, no Kubernetes.
+#
+# 2026-09-07: checkers moved off the cx43 cluster onto the box that already
+# runs MatchStory. The compose file lives in this repo rather than in
+# yotam-peled-website (which builds checkers-web) because this repo owns the
+# database, and the database is the part that has state to lose.
+#
+# Two constraints shape this file and neither is negotiable.
+#
+# 1. Ports 80/443 belong to MatchStory's Caddy. Nothing here publishes a host
+#    port; the shared front door reaches these containers by name over the
+#    network MatchStory's compose project already created.
+# 2. That network is shared, so DNS names on it are shared. MatchStory has a
+#    service called `db`, and its backend resolves `db` to reach Postgres.
+#    Compose registers every service name as a network alias, so a service
+#    called `db` here would put a second answer behind MatchStory's own name.
+#    Every service is therefore named for its container, not its role.
+#
+# The box has 4 GB and no swap, and lost sshd to a memory thrash on 2026-08-22,
+# so every container carries an explicit mem_limit sized from measured RSS on
+# the cluster plus headroom, and an explicit log cap — the daemon has no
+# default log rotation.
+
+name: checkers
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # Postgres 17 because the CNPG cluster this replaces ran 17.9 and a 17 dump
+  # does not restore into 16. locale C / encoding UTF8 mirror the CNPG initdb
+  # settings. MatchStory's own postgres:16-alpine is a different container and
+  # is not shared.
+  checkers-db:
+    image: postgres:17-alpine
+    container_name: checkers-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: checkers
+      POSTGRES_USER: checkers
+      POSTGRES_PASSWORD: ${PGPASSWORD:?set PGPASSWORD in deploy/cx22/.env}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U checkers -d checkers"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    mem_limit: 384m
+    logging: *logging
+    networks: [edge]
+
+  # Singleton by design: the game state lives in an in-process GameTracker, so
+  # a second replica loses games at random. Never scale this.
+  #
+  # PATH_BASE is deliberately unset. The app defaults to /api and the front
+  # door passes /api through without rewriting it, exactly as the cluster
+  # ingress did — so /api/healthz and /healthz both answer here.
+  checkers-api:
+    image: ghcr.io/yotam-personal/checkers-api:main-11596fb
+    container_name: checkers-api
+    restart: unless-stopped
+    depends_on:
+      checkers-db:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: prod
+      PGHOST: checkers-db
+      PGPORT: "5432"
+      PGUSER: checkers
+      PGDATABASE: checkers
+      PGPASSWORD: ${PGPASSWORD:?set PGPASSWORD in deploy/cx22/.env}
+    mem_limit: 256m
+    logging: *logging
+    networks: [edge]
+
+  # Built from yotam-personal/yotam-peled-website. Static nginx on 8080 as
+  # uid 101; it takes no configuration at all, because the API is same-origin
+  # at /api.
+  checkers-web:
+    image: ghcr.io/yotam-personal/checkers-web:main-a5e9b8b
+    container_name: checkers-web
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: prod
+    mem_limit: 256m
+    logging: *logging
+    networks: [edge]
+
+volumes:
+  pgdata:
+
+networks:
+  edge:
+    name: matchstory_matchstory-network
+    external: true
