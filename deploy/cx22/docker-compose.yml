@@ -1,0 +1,133 @@
+# checkers as raw Docker on a shared single-host box.
+#
+# This repository is public, so nothing here names the host, the co-tenant
+# application, the object-storage bucket or the docker network. Every one of
+# those is supplied at deploy time through deploy/cx22/.env, which is not
+# committed. The private runbook has the values.
+#
+# 2026-09-07: checkers moved off a Kubernetes cluster onto a box that already
+# runs another application. The compose file lives in this repo rather than in
+# the repo that builds checkers-web, because this repo owns the database, and
+# the database is the part that has state to lose.
+#
+# Two constraints shape this file and neither is negotiable.
+#
+# 1. Ports 80/443 already belong to the other application's reverse proxy.
+#    Nothing here publishes a host port; the shared front door reaches these
+#    containers by name over the docker network that application created, which
+#    we join as `external` and never reconfigure.
+# 2. That network is shared, so DNS names on it are shared. The co-tenant has a
+#    service called `db` and resolves it by name to reach its own Postgres.
+#    Compose registers every service name as a network alias, so a service
+#    called `db` here would put a second answer behind a name that is not ours.
+#    Every service is therefore named for its container, not its role.
+#
+# The box has 4 GB and no swap, and has already lost sshd once to a memory
+# thrash, so every container carries an explicit mem_limit sized from measured
+# RSS plus headroom, and an explicit log cap — the daemon has no default log
+# rotation.
+
+name: checkers
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # Postgres 17 because the cluster this replaces ran 17.9 and a 17 dump does
+  # not restore into 16. locale C / encoding UTF8 mirror that cluster's initdb
+  # settings. Pinned by digest, not just by tag: `postgres:17-alpine` moves, and
+  # a database engine that changes underneath a running volume during an
+  # unrelated `docker compose up` is not a surprise anyone wants. The tag is
+  # kept alongside for readability.
+  checkers-db:
+    image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+    container_name: checkers-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: checkers
+      POSTGRES_USER: checkers
+      POSTGRES_PASSWORD: ${PGPASSWORD:?set PGPASSWORD in deploy/cx22/.env}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U checkers -d checkers"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    mem_limit: 384m
+    logging: *logging
+    networks: [edge]
+
+  # Singleton by design: the game state lives in an in-process GameTracker, so
+  # a second replica loses games at random. Never scale this.
+  #
+  # PATH_BASE is deliberately unset. The app defaults to /api and the front door
+  # passes /api through without rewriting it, exactly as the cluster ingress
+  # did — so /api/healthz and /healthz both answer here.
+  #
+  # The healthcheck is bash talking to /dev/tcp because this image has neither
+  # curl nor wget, and adding a package to a runtime image to answer a probe is
+  # a worse trade than four lines of shell. Verified against the image before it
+  # was written here: bash exists, and the same command returns non-zero when
+  # pointed at a closed port.
+  checkers-api:
+    image: ghcr.io/yotam-personal/checkers-api:main-11596fb
+    container_name: checkers-api
+    restart: unless-stopped
+    depends_on:
+      checkers-db:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: prod
+      PGHOST: checkers-db
+      PGPORT: "5432"
+      PGUSER: checkers
+      PGDATABASE: checkers
+      PGPASSWORD: ${PGPASSWORD:?set PGPASSWORD in deploy/cx22/.env}
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - 'exec 3<>/dev/tcp/127.0.0.1/8080 && printf "GET /healthz HTTP/1.0\r\n\r\n" >&3 && head -1 <&3 | grep -q 200'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    mem_limit: 256m
+    logging: *logging
+    networks: [edge]
+
+  # Static nginx on 8080 as uid 101, built from the website repository. It takes
+  # no configuration at all, because the API is same-origin at /api.
+  checkers-web:
+    image: ghcr.io/yotam-personal/checkers-web:main-a5e9b8b
+    container_name: checkers-web
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: prod
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    mem_limit: 256m
+    logging: *logging
+    networks: [edge]
+
+volumes:
+  pgdata:
+
+networks:
+  # The co-tenant's compose network, joined read-only as an external network.
+  # Its name is deployment-specific and lives in deploy/cx22/.env; see the
+  # private runbook. We never change this network's settings.
+  edge:
+    name: ${SHARED_NETWORK:?set SHARED_NETWORK in deploy/cx22/.env}
+    external: true
