@@ -1,8 +1,10 @@
-# checkers on the cx22 — install as /etc/cron.d/checkers (root:root 0644).
+# checkers — install as /etc/cron.d/checkers (root:root 0644).
 #
-# Clear of 03:00-03:15 where MatchStory's `docker builder prune -af` runs, and
-# ten minutes after azakot's dump rather than on top of it: two pg_dump | gzip -9
-# pipelines at once is both cores of a 2-vCPU box for no reason.
+# 04:50 is chosen against the box's other tenants, not for its own sake: it is
+# clear of the co-tenant's nightly image prune, and ten minutes after the other
+# application's dump rather than on top of it, because two
+# `pg_dump | gzip -9` pipelines at once is both cores of a 2-vCPU box for no
+# reason. Check the private runbook before moving it.
 #
 # checkers has no refresh job — the whole nightly story here is the dump.
 SHELL=/bin/bash

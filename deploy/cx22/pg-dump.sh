@@ -1,33 +1,25 @@
 #!/bin/bash
-# Nightly logical backup of the checkers database on the cx22.
+# Nightly logical backup of the checkers database.
 #
-# 2026-09-07: the cluster this replaced had CNPG's barman plugin writing WAL and
-# a nightly base backup to S3. A raw Docker box has neither, so this is the only
-# backup checkers has. It is modelled on the orbit service chart's own dump job
-# (charts/service/templates/database.yaml): pg_dump --no-owner --no-privileges
-# piped through gzip, written to .part and renamed, pruned by age, with stale
-# .part files swept so a run that dies mid-dump cannot fill the disk with
-# half-written files the age prune never matches.
+# 2026-09-07: the cluster this replaced had CloudNativePG's barman plugin
+# writing WAL and a nightly base backup to object storage. A raw Docker box has
+# neither, so this is the only backup checkers has. It follows the orbit service
+# chart's own dump job: pg_dump --no-owner --no-privileges piped through gzip,
+# written to .part and renamed, pruned by age, with stale .part files swept so a
+# run that dies mid-dump cannot fill the disk with half-written files that the
+# age prune never matches.
 #
 # The off-box copy matters more here than it did on the cluster: this box holds
 # the only running copy of the database, so a lost box is a lost database unless
-# the dump is somewhere else. Credentials for the bucket are read from a 0600
-# file outside the repo; if that file is absent the local dump still happens and
-# the script says so rather than failing the whole backup.
-# S3_ENV is not in this repo. It is /etc/orbit/s3.env on the box, mode 0600, and
-# holds rclone's remote as environment variables:
+# the dump is somewhere else. That is why a failed upload is an ERROR and a
+# non-zero exit, not a warning — a backup job that exits 0 while the backup
+# never leaves the box is worse than no backup job, because it is also a false
+# assurance. The local prune still runs on every path (see the EXIT trap), so a
+# broken uploader can never also fill the disk.
 #
-#   RCLONE_CONFIG_ORBIT_TYPE=s3
-#   RCLONE_CONFIG_ORBIT_PROVIDER=Other
-#   RCLONE_CONFIG_ORBIT_ENDPOINT=https://fsn1.your-objectstorage.com
-#   RCLONE_CONFIG_ORBIT_REGION=fsn1
-#   RCLONE_CONFIG_ORBIT_ACCESS_KEY_ID=<orbit-s3 HETZNER_S3_ACCESS_KEY>
-#   RCLONE_CONFIG_ORBIT_SECRET_ACCESS_KEY=<orbit-s3 HETZNER_S3_SECRET_KEY>
-#
-# REGION is the line that is easy to leave out and hard to diagnose. Hetzner
-# Object Storage answers reads without it and rejects every PUT with
-# LocationConstraintConflict, so `rclone ls` succeeds while the backup silently
-# never leaves the box. 2026-09-07: cost an hour the first time.
+# This repository is public. Nothing here names the host, the bucket, the
+# endpoint or the credentials file; all of that arrives through the
+# deployment's own .env. The private runbook has the values.
 set -euo pipefail
 umask 077
 
@@ -37,10 +29,27 @@ DB_USER=checkers
 DB_NAME=checkers
 DEST=/var/backups/pg/${APP}
 KEEP_DAYS=7
-S3_ENV=/etc/orbit/s3.env
-S3_REMOTE=orbit:yotamorbitplatform/raw-dumps/${APP}
+
+HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+
+# Deployment-specific settings, from the same 0600 .env the compose file uses:
+#   BACKUP_S3_ENV     path to a 0600 file of RCLONE_CONFIG_<REMOTE>_* variables
+#   BACKUP_S3_REMOTE  rclone destination, e.g. <remote>:<bucket>/<prefix>/checkers
+# Both are documented in .env.example and carried in the private runbook.
+if [ -r "$HERE/.env" ]; then
+  set -a; . "$HERE/.env"; set +a
+fi
 
 mkdir -p "$DEST"
+
+# Runs on EVERY exit path, so a failing upload can never also mean a disk that
+# fills with dumps nobody prunes. It does not touch the exit status.
+cleanup() {
+  find "$DEST" -name '*.sql.gz' -mtime +"${KEEP_DAYS}" -delete || true
+  find "$DEST" -name '*.part' -mmin +120 -delete || true
+  ls -lh "$DEST" || true
+}
+trap cleanup EXIT
 
 out="$DEST/${DB_NAME}-$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
 docker exec -i "$CONTAINER" pg_dump -U "$DB_USER" --no-owner --no-privileges "$DB_NAME" \
@@ -48,14 +57,23 @@ docker exec -i "$CONTAINER" pg_dump -U "$DB_USER" --no-owner --no-privileges "$D
 mv "$out.part" "$out"
 echo "wrote $out ($(stat -c %s "$out") bytes)"
 
-if [ -r "$S3_ENV" ]; then
-  set -a; . "$S3_ENV"; set +a
-  rclone copy "$out" "$S3_REMOTE/"
-  echo "copied to $S3_REMOTE/$(basename "$out")"
+# From here on the local dump is safe on disk, so every remaining failure is
+# reported and carried to the exit status rather than aborting the run.
+rc=0
+if [ -z "${BACKUP_S3_ENV:-}" ] || [ -z "${BACKUP_S3_REMOTE:-}" ]; then
+  echo "ERROR: BACKUP_S3_ENV / BACKUP_S3_REMOTE unset — no off-box copy made" >&2
+  rc=1
+elif [ ! -r "$BACKUP_S3_ENV" ]; then
+  echo "ERROR: $BACKUP_S3_ENV missing or unreadable — no off-box copy made" >&2
+  rc=1
 else
-  echo "WARNING: $S3_ENV unreadable — local dump only, no off-box copy" >&2
+  set -a; . "$BACKUP_S3_ENV"; set +a
+  if rclone copy "$out" "$BACKUP_S3_REMOTE/"; then
+    echo "copied to $BACKUP_S3_REMOTE/$(basename "$out")"
+  else
+    echo "ERROR: off-box copy of $(basename "$out") failed" >&2
+    rc=1
+  fi
 fi
 
-find "$DEST" -name '*.sql.gz' -mtime +${KEEP_DAYS} -delete
-find "$DEST" -name '*.part' -mmin +120 -delete
-ls -lh "$DEST"
+exit $rc

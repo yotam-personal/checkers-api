@@ -1,0 +1,14 @@
+# checkers — install as /etc/logrotate.d/checkers (root:root 0644).
+#
+# The cron jobs append to these files forever otherwise. The box has no docker
+# log rotation of its own either; the compose file caps the container logs, and
+# this caps the host-side cron logs.
+/var/log/checkers-pg-dump.log {
+    weekly
+    rotate 4
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 root adm
+}
