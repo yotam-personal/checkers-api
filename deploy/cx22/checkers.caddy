@@ -1,0 +1,35 @@
+# checkers' site block for the shared front door.
+#
+# Copied to the drop-in directory the shared proxy imports (see the private
+# runbook for the path); the directory sits outside that proxy's own repository
+# on purpose, because that repository deploys with `git reset --hard` and would
+# silently delete a block written into it.
+#
+# Replaces the Ingress that served this hostname off the cluster. That Ingress
+# had two path backends on one host — `/` to the web app and `/api` to the API,
+# with the prefix passed through UNSTRIPPED because the API itself mounts at
+# `/api` (UsePathBase). `handle` (not `handle_path`) is the directive that keeps
+# the prefix; `handle_path` would strip it and every API call would 404.
+#
+# tls/issuer acme with disable_tlsalpn_challenge (2026-09-07): the sibling app
+# on this proxy is served through a CDN that terminates TLS, so TLS-ALPN-01
+# cannot reach the origin. HTTP-01 is pinned for every name on this proxy so all
+# of them issue the same way.
+checkers.yotam.xyz {
+	tls {
+		issuer acme {
+			disable_tlsalpn_challenge
+		}
+	}
+
+	# `/api` and everything under it. Two tokens because the Ingress path type
+	# was Prefix, which matched the bare `/api` as well as `/api/...`.
+	@api path /api /api/*
+	handle @api {
+		reverse_proxy checkers-api:8080
+	}
+
+	handle {
+		reverse_proxy checkers-web:8080
+	}
+}

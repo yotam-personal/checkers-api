@@ -12,6 +12,9 @@ here — they live in `deploy/cx22/.env` (mode 600, never committed, see
 - `checkers-web` is built from the website repository, not this one.
 - `cron.d` → `/etc/cron.d/checkers`, `logrotate` → `/etc/logrotate.d/checkers`.
 - Dumps: `/var/backups/pg/checkers/` plus the off-box copy `pg-dump.sh` makes.
+- Front door: `checkers.caddy` is copied into the shared proxy's drop-in
+  directory and applied with a `caddy reload` — a config reload, never a
+  restart of the co-tenant's proxy.
 
 ## Shared box
 
